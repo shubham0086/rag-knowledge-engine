@@ -3,7 +3,6 @@ Ingestor: reads files from a directory, chunks them, embeds them,
 and upserts into Qdrant.
 """
 import os
-import hashlib
 from pathlib import Path
 from typing import List
 
@@ -11,26 +10,12 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 from sentence_transformers import SentenceTransformer
 
+# Chunking primitives live in chunking.py (dependency-light) and are re-exported
+# here for backward compatibility.
+from .chunking import _chunk_text, _doc_id, CHUNK_SIZE, CHUNK_OVERLAP
+
 COLLECTION = "knowledge"
 EMBED_MODEL = "all-MiniLM-L6-v2"
-CHUNK_SIZE  = 512
-CHUNK_OVERLAP = 64
-
-
-def _chunk_text(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
-    words = text.split()
-    chunks = []
-    i = 0
-    while i < len(words):
-        chunk = " ".join(words[i : i + size])
-        chunks.append(chunk)
-        i += size - overlap
-    return chunks
-
-
-def _doc_id(file_path: str, chunk_idx: int) -> str:
-    raw = f"{file_path}::{chunk_idx}"
-    return hashlib.md5(raw.encode()).hexdigest()
 
 
 class Ingestor:

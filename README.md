@@ -87,20 +87,50 @@ result = engine.ask("What does the circuit breaker do?", evaluate=True)
 chunks = engine.search("rate limiting implementation", top_k=3)
 ```
 
+## Serverless mode (edge deployment, no Qdrant / no torch)
+
+The default stack needs a running Qdrant server and a local torch embedding model, which
+can't fit in a serverless function. Serverless mode swaps both out: a **pluggable
+embedding backend** (API-based, no torch) and a **static index** (a single `index.json`,
+no vector server). Query it from a lightweight runtime (e.g. a Vercel function doing
+cosine similarity) for a fully edge-deployable RAG endpoint.
+
+```python
+from src.static_index import build_static_index
+
+# Build a portable index from public content using Gemini embeddings (no torch).
+# Requires GEMINI_API_KEY. Output ships with a static site.
+summary = build_static_index(
+    "./public-corpus",
+    out_path="index.json",
+    embedder_name="gemini",                 # or "local" for sentence-transformers
+    extensions=[".md", ".html", ".txt"],
+    source_base_url="https://example.com",  # stored so a runtime can link sources
+)
+# { "count": 124, "dim": 768, "model": "text-embedding-004", "out_path": "index.json" }
+```
+
+Embedding backends (`src/embeddings.py`): `LocalEmbedder` (sentence-transformers, the
+original default) and `GeminiEmbedder` (Gemini `text-embedding-004` via REST, uses the
+existing `httpx` dep, no new requirements). The same backend must build and query an
+index so vectors stay comparable.
+
 ## Tests
 
 ```bash
 pytest tests/ -v
 ```
 
-20 tests. All mock Qdrant, Anthropic, and the cross-encoder — no live services needed.
+25 tests. All mock Qdrant, Anthropic, and the cross-encoder — no live services needed.
+The serverless suite runs fully offline (fake embedder, no network/torch).
 
 ```
-tests/test_ingestor.py   — 6 tests  (chunking, doc IDs, file ingestion)
-tests/test_retriever.py  — 6 tests  (vector search, RRF fusion, hybrid, rerank)
-tests/test_reranker.py   — 3 tests  (score sorting, top-k, empty input)
-tests/test_answerer.py   — 2 tests  (citation answer, not-found refusal)
-tests/test_evaluator.py  — 3 tests  (faithfulness, relevance, precision)
+tests/test_ingestor.py      — 6 tests  (chunking, doc IDs, file ingestion)
+tests/test_retriever.py     — 6 tests  (vector search, RRF fusion, hybrid, rerank)
+tests/test_reranker.py      — 3 tests  (score sorting, top-k, empty input)
+tests/test_answerer.py      — 2 tests  (citation answer, not-found refusal)
+tests/test_evaluator.py     — 3 tests  (faithfulness, relevance, precision)
+tests/test_static_index.py  — 5 tests  (serverless: HTML strip, index shape, filtering, excludes)
 ```
 
 ## Design decisions
@@ -111,7 +141,7 @@ tests/test_evaluator.py  — 3 tests  (faithfulness, relevance, precision)
 
 **Why Qdrant?** Best price-performance in the 2026 vector DB market. Runs locally in Docker, has a generous free cloud tier, and the Python client is the cleanest of the major options.
 
-**Why `all-MiniLM-L6-v2`?** 384-dimension embeddings, CPU inference, fast enough for local development. Swap to `text-embedding-3-large` for production by changing one constant in `ingestor.py`.
+**Why `all-MiniLM-L6-v2`?** 384-dimension embeddings, CPU inference, fast enough for local development. Embeddings are pluggable (`src/embeddings.py`): swap to an API backend like Gemini `text-embedding-004` for serverless/edge builds where torch can't run.
 
 **Why Claude for answering?** Citation compliance. Claude reliably follows "only answer from context, always cite." The `Answerer` returns "Not found in the provided documents." when context doesn't support a claim — hallucinated answers in a knowledge base are worse than silence.
 
