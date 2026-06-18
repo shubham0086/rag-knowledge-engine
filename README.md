@@ -4,6 +4,8 @@ Ask questions about any codebase or document collection and get cited answers in
 
 Ingests files into Qdrant (vector database), retrieves the most relevant chunks via hybrid search, reranks with a cross-encoder, and generates a grounded answer via Claude with source citations. Refuses to hallucinate — if the answer is not in the documents, it says so.
 
+> For project walkthroughs, architecture flowcharts, and system context, visit the live landing page: [my-portfolio-github-io-beta-five.vercel.app/projects/rag-knowledge-engine.html](https://my-portfolio-github-io-beta-five.vercel.app/projects/rag-knowledge-engine.html)
+
 ## What it does
 
 ```
