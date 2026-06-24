@@ -86,6 +86,52 @@ def test_exclude_dirs_skips_matching_folders(tmp_path):
     assert not any("agent-anatomy" in f for f in files)
 
 
+def test_emit_citations_adds_stable_id_and_source(tmp_path):
+    # OKF citations-as-claims: opt-in id + source per record, legacy shape otherwise.
+    (tmp_path / "a.md").write_text("hello world from shubham portfolio", encoding="utf-8")
+
+    out = tmp_path / "index.json"
+    build_static_index(
+        str(tmp_path),
+        out_path=str(out),
+        embedder=FakeEmbedder(),
+        source_base_url="https://example.com",
+        emit_citations=True,
+    )
+    index = json.loads(out.read_text(encoding="utf-8"))
+    rec = index["records"][0]
+    # stable id present and matches the shared _doc_id scheme
+    from src.chunking import _doc_id
+    assert rec["id"] == _doc_id(rec["file"], rec["chunk_idx"])
+    # claim -> source link resolved from base url + file, no double slash
+    assert rec["source"] == "https://example.com/a.md"
+
+
+def test_emit_citations_off_keeps_legacy_record_shape(tmp_path):
+    # Default (opt-out) must not add id/source: backward compatibility.
+    (tmp_path / "a.md").write_text("hello world", encoding="utf-8")
+
+    out = tmp_path / "index.json"
+    build_static_index(str(tmp_path), out_path=str(out), embedder=FakeEmbedder())
+    index = json.loads(out.read_text(encoding="utf-8"))
+    for rec in index["records"]:
+        assert set(rec.keys()) == {"file", "chunk_idx", "text", "vector"}
+
+
+def test_emit_citations_without_base_url_has_id_but_no_source(tmp_path):
+    # id is always derivable; source needs a base url to resolve.
+    (tmp_path / "a.md").write_text("hello world", encoding="utf-8")
+
+    out = tmp_path / "index.json"
+    build_static_index(
+        str(tmp_path), out_path=str(out), embedder=FakeEmbedder(), emit_citations=True
+    )
+    index = json.loads(out.read_text(encoding="utf-8"))
+    for rec in index["records"]:
+        assert "id" in rec
+        assert "source" not in rec
+
+
 def test_chunking_still_importable_from_chunking_module():
     # Backward-compat: chunking primitives work standalone (no torch import).
     assert _chunk_text("one two three") == ["one two three"]
